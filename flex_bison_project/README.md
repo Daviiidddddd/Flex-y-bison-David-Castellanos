@@ -18,17 +18,15 @@ Este proyecto implementa los ejercicios solicitados para el Capítulo 1 del libr
 ## Respuestas a las Preguntas de Ejercicio
 
 ### 1) Manejo de comentarios
-la calculadora NO aceptará una línea que contenga solo un comentario si el scanner consume también el \n sin devolverlo al parser. La solución correcta y más limpia es arreglarlo en el scanner (Flex): los comentarios son léxicos y el scanner debe ignorar su texto pero preservar saltos de línea (o devolver '\n') para que el parser pueda ver líneas vacías.
+Por defecto, la calculadora NO aceptará una línea que contenga solo un comentario si el scanner consume también el \n sin devolverlo al parser. La solución correcta y más limpia es arreglarlo en el scanner (Flex): los comentarios son léxicos y el scanner debe ignorar su texto pero preservar saltos de línea (o devolver '\n') para que el parser pueda ver líneas vacías.
 
 Por qué: la gramática de la calculadora espera '\n' como terminador de línea:
-
-yacc
-Copiar
-Editar
+```
 line:
   '\n'
 | expr '\n' { printf(...); }
 ;
+```
 Si el scanner se traga el \n dentro de la regla de comentario, el parser no recibe el terminador y la línea “vacía” no es reconocida.
 
 Implementación recomendada (scanner):
@@ -38,10 +36,7 @@ Soporte // linea única: consumir comentario pero devolver \n (o dejar que la re
 Soporte /* ... */ multilínea: contar \n dentro del bloque y reinyectarlos (o devolverlos) para que el parser los vea.
 
 Reglas Flex (snippet):
-
-lex
-Copiar
-Editar
+```
 %{
 #include "calc.tab.h"
 #include <stdlib.h>
@@ -67,22 +62,19 @@ Editar
 \n                 { return '\n'; }
 ... otras reglas ...
 %%
+```
 Cómo probar:
 
 Línea sólo comentario: echo "// esto es comentario" | ./calc debe comportarse como echo "" | ./calc — el parser debe reconocer la línea vacía.
 
-Comentario al EOF (sin \n): printf "//hola" | ./calc — debería funcionar igual.
+Comentario al EOF (sin \n): printf "//millos" | ./calc — debería funcionar igual.
 
 ### 2) Conversión hexadecimal
 Objetivo: aceptar números hex (0x... / 0X...) y decimales, y que el parser reciba token NUMBER con yylval cargado.
 
 Decisión técnica: añadir en el scanner un patrón que capture hexadecimales y usar strtol(yytext, NULL, 0) para convertir (base 0 detecta 0x).
-
 Regla Flex (snippet):
-
-lex
-Copiar
-Editar
+```
 0[xX][0-9a-fA-F]+   {
                        yylval.ival = (int) strtol(yytext, NULL, 0);
                        return NUMBER;
@@ -91,63 +83,58 @@ Editar
                        yylval.ival = atoi(yytext);
                        return NUMBER;
                     }
+```
 strtol(..., 0) detecta 0x e interpreta correctamente. Si quieres manejar -0x... como número negativo, el parser puede tratar el - como operador unario.
 
 Cambios en Bison (calc.y):
 
 Asegúrate de que NUMBER tenga tipo en %union, por ejemplo:
-
-yacc
-Copiar
-Editar
+```
 %union { int ival; }
 %token <ival> NUMBER
 %type <ival> expr
+```
 Ajusta la impresión del resultado (decimal y hex):
-
-c
-Copiar
-Editar
+```
 line:
   '\n'
 | expr '\n' { printf("dec: %d\t hex: 0x%x\n", $1, $1); }
 ;
+```
 Pruebas:
-
-bash
 ```
 echo "0x1a + 10" | ./calc
 # Esperado: dec: 36    hex: 0x24
 echo "255" | ./calc
 # Esperado: dec: 255   hex: 0xff
 ```
+
 ### 3) Operadores de nivel de bits
 Requerimiento: añadir & (AND), | (OR), ^ (XOR).
 
 Lexer (Flex):
-
+```
 lex
-Copiar
-Editar
+
 "&"    { return '&'; }
 "^"    { return '^'; }
 "|"    { return '|'; }
+```
 Parser (Bison) — precedencias:
 Define precedencias para que la evaluación siga lo esperado (estilo C):
 
-yacc
-Copiar
-Editar
+
+```
 %left '|'       /* bitwise OR (baja precedencia entre bitwise) */
 %left '^'       /* XOR */
 %left '&'       /* AND */
 %left '+' '-'
 %left '*' '/'
+```
 Producciones (snippet):
+```
 
-yacc
-Copiar
-Editar
+
 expr:
     NUMBER             { $$ = $1; }
   | expr '|' expr      { $$ = $1 | $3; }
@@ -160,6 +147,7 @@ expr:
   | '-' expr %prec UMINUS { $$ = -$2; }
   | '(' expr ')'       { $$ = $2; }
   ;
+```
 Ambigüedad | como OR vs |expr| valor absoluto
 
 | se usa tanto como operador binario OR como para el valor absoluto notación |x|.
@@ -171,26 +159,25 @@ Para soportar |expr| como absoluto hay dos enfoques:
 a) Preferir abs(expr) y evitar |expr|. Es lo más simple y sin ambigüedad.
 
 b) Soportar |expr| en la gramática:
+```
 
-yacc
-Copiar
-Editar
+
 factor:
    '|' expr '|'   { $$ = abs($2); }
  | NUMBER
  | '(' expr ')'
 ;
+```
 Esto puede crear conflictos shift/reduce porque la misma | puede iniciar un operador binario o un absoluto. Bison puede reportar conflictos; a veces se solucionan por precedencias o reestructuración de la gramática. En la práctica, recomiendo usar abs(expr) para evitar estas complicaciones, salvo que el requisito sea explícito.
 
 Pruebas:
 
-bash
-Copiar
-Editar
+```
+
 echo "0xFF & 0x0F" | ./calc   # dec: 240 hex: 0xf0
 echo "5 | 2" | ./calc         # dec: 7   hex: 0x7
 echo "0x10 ^ 0x01" | ./calc   # dec: 17  hex: 0x11
-
+```
 
 ### 4) Reconocimiento de tokens
 Pregunta: ¿la versión manuscrita reconoce exactamente los mismos tokens que flex?
@@ -221,12 +208,11 @@ Ejecuta ambos con el mismo conjunto de entradas de prueba (casos límite: <=, 0x
 
 Guarda salidas y usa diff:
 
-bash
-Copiar
-Editar
+```
 ./scanner_flex < tests.txt > flex.tokens
 ./scanner_manual < tests.txt > manual.tokens
 diff -u flex.tokens manual.tokens
+```
 Investiga cada discrepancia y documenta la causa.
 
 ### 5) Limitaciones de Flex
@@ -254,9 +240,7 @@ Implementación eficiente (usa fread y procesamiento por bloques):
 
 wc_c.c
 
-c
-Copiar
-Editar
+```
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -290,25 +274,24 @@ int main(int argc, char **argv) {
     if (f != stdin) fclose(f);
     return 0;
 }
+```
 Compilación:
 
-bash
-Copiar
-Editar
+```
 gcc -O2 -o wc_c wc_c.c
+```
 Medición y comparación:
 
 Prepara un archivo grande de prueba (por ejemplo big.txt).
 
 Ejecuta:
 
-bash
-Copiar
-Editar
+```
 time ./wc_c big.txt > /dev/null
 time ./ex1-1 big.txt > /dev/null   # versión flex que hiciste
 time /usr/bin/time -v ./wc_c big.txt  # info detallada
 time /usr/bin/time -v ./ex1-1 big.txt
+```
 Observaciones esperadas:
 
 Una versión en C bien optimizada (lectura por bloques fread, -O2) suele ser tan rápida o más que la versión generada por Flex (que hace matching regex y llamada a acciones), especialmente en archivos muy grandes.
@@ -323,9 +306,7 @@ A continuación tienes los ficheros listos. Pégalos a calc.l, calc.y y Makefile
 
 calc.l
 
-c
-Copiar
-Editar
+```
 %{
 #include "calc.tab.h"
 #include <stdlib.h>
@@ -374,11 +355,10 @@ int comment_newlines = 0;
 %%
 
 int yywrap(void) { return 1; }
+```
 calc.y
 
-yacc
-Copiar
-Editar
+```
 %{
 #include <stdio.h>
 #include <stdlib.h>
@@ -442,10 +422,9 @@ int main(void) {
     return 0;
 }
 Makefile
+```
+```
 
-makefile
-Copiar
-Editar
 all: calc
 
 calc: calc.tab.c lex.yy.c
@@ -461,15 +440,14 @@ clean:
 	rm -f calc calc.tab.c calc.tab.h calc.output lex.yy.c
 Cómo compilar y probar:
 
-bash
-Copiar
-Editar
-make
+```
+
 # pruebas
+```
 echo "0x1F & 7" | ./calc
 echo "abs(-12)" | ./calc
 echo "// solo comentario" | ./calc   # no imprime nada pero no da error
 printf "/* comentario \n que contiene nueva linea */\n" | ./calc
-
+```
 ## FinaL
 David Castellanos
