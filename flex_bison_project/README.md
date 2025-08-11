@@ -115,13 +115,12 @@ line:
 Pruebas:
 
 bash
-Copiar
-Editar
+```
 echo "0x1a + 10" | ./calc
 # Esperado: dec: 36    hex: 0x24
 echo "255" | ./calc
 # Esperado: dec: 255   hex: 0xff
-
+```
 ### 3) Operadores de nivel de bits
 Requerimiento: añadir & (AND), | (OR), ^ (XOR).
 
